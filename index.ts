@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import * as https from "https";
 import fastifyCors from "@fastify/cors";
 import { PrismaClient } from "@prisma/client";
+import * as dns from "dns";
 
 dotenv.config();
 
@@ -18,75 +19,105 @@ const main = async (request: FastifyRequest, reply: FastifyReply) => {
   });
 
   const targetUrl = `${process.env.TARGET_URL}${url}`;
+  const requestHeaders = {
+    ...headers,
+    host: process.env.TARGET_URL?.replace(/(^\w+:|^)\/\//, ""),
+  };
 
-  await axios(targetUrl, {
-    headers: {
-      ...headers,
-      host: process.env.TARGET_URL?.replace(/(^\w+:|^)\/\//, ""),
-    },
-    method,
-    data: body,
-    params: query,
-    httpsAgent: agent,
-  })
-    .then(async (response) => {
-      const parsedHeaders = Object.entries(response.headers).reduce(
-        (acc, [key, value]) => ({
-          ...acc,
-          [key]: value === null ? undefined : value,
-        }),
-        {},
-      );
+  if (
+    !!(await dns.promises.resolve("google.com")) &&
+    process.env.OFFLINE !== "true"
+  ) {
+    await axios(targetUrl, {
+      headers: requestHeaders,
+      method,
+      data: body,
+      params: query,
+      httpsAgent: agent,
+    })
+      .then(async (response) => {
+        const parsedHeaders = Object.entries(response.headers).reduce(
+          (acc, [key, value]) => ({
+            ...acc,
+            [key]: value === null ? undefined : value,
+          }),
+          {},
+        );
 
-      const cachedRequest = await prisma.request.findFirst({
-        orderBy: [
-          {
-            updated_at: "desc",
-          },
-        ],
-        where: {
-          method,
-          request_url: targetUrl,
-          request_payload: JSON.stringify(body),
-        },
-      });
-
-      if (cachedRequest) {
-        await prisma.request.update({
+        const cachedRequest = await prisma.request.findFirst({
+          orderBy: [
+            {
+              updated_at: "desc",
+            },
+          ],
           where: {
-            id: cachedRequest.id,
-          },
-          data: {
-            request_headers: JSON.stringify(headers),
-            response_status: response.status,
-            response_body: JSON.stringify(response.data),
-            response_headers: JSON.stringify(parsedHeaders),
-          },
-        });
-      } else {
-        await prisma.request.create({
-          data: {
             method,
             request_url: targetUrl,
-            request_headers: JSON.stringify(headers),
             request_payload: JSON.stringify(body),
-            response_status: response.status,
-            response_body: JSON.stringify(response.data),
-            response_headers: JSON.stringify(parsedHeaders),
-            updated_at: new Date(),
           },
         });
-      }
 
-      reply.headers({ ...parsedHeaders });
-      reply.status(response.status);
-      reply.send(response.data);
-    })
-    .catch((error) => {
-      console.error(error);
-      reply.status(error.response.status);
-      reply.send(error.response.data);
+        if (cachedRequest) {
+          await prisma.request.update({
+            where: {
+              id: cachedRequest.id,
+            },
+            data: {
+              request_headers: JSON.stringify(requestHeaders),
+              response_status: response.status,
+              response_body: JSON.stringify(response.data),
+              response_headers: JSON.stringify(parsedHeaders),
+            },
+          });
+        } else {
+          await prisma.request.create({
+            data: {
+              method,
+              request_url: targetUrl,
+              request_headers: JSON.stringify(requestHeaders),
+              request_payload: JSON.stringify(body),
+              response_status: response.status,
+              response_body: JSON.stringify(response.data),
+              response_headers: JSON.stringify(parsedHeaders),
+              updated_at: new Date(),
+            },
+          });
+        }
+
+        reply.headers({ ...parsedHeaders });
+        reply.status(response.status);
+        reply.send(response.data);
+      })
+      .catch((error) => {
+        console.error(error);
+        reply.status(error.response.status);
+        reply.send(error.response.data);
+      });
+  } else {
+    const cachedRequest = await prisma.request.findFirst({
+      orderBy: [
+        {
+          updated_at: "desc",
+        },
+      ],
+      where: {
+        method,
+        request_url: targetUrl,
+        request_payload: JSON.stringify(body),
+      },
     });
+
+    if (cachedRequest) {
+      reply.headers(JSON.parse(cachedRequest.response_headers));
+      reply.status(cachedRequest.response_status);
+      reply.send(JSON.parse(cachedRequest.response_body));
+    } else {
+      reply.status(404);
+      reply.send({
+        message: "No cached response found",
+      });
+    }
+  }
 };
 
 server.get("*", main);
