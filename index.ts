@@ -86,6 +86,8 @@ const main = async (request: FastifyRequest, reply: FastifyReply) => {
           });
         }
 
+        console.log(method, targetUrl, "Return real response and cached it");
+
         reply.headers({ ...parsedHeaders });
         reply.status(response.status);
         reply.send(response.data);
@@ -113,6 +115,8 @@ const main = async (request: FastifyRequest, reply: FastifyReply) => {
       reply.headers(JSON.parse(cachedRequest.response_headers));
       reply.status(cachedRequest.response_status);
       reply.send(JSON.parse(cachedRequest.response_body));
+
+      console.log(method, targetUrl, "Return cached response");
     } else {
       reply.status(404);
       reply.send({
