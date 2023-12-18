@@ -1,0 +1,24 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./cache.db?connection_limit=1"
+}
+
+model Request {
+  id               String   @id @default(uuid())
+  method           String
+  request_url      String
+  request_payload  String?
+  request_headers  String
+  response_body    String
+  response_status  Int
+  response_headers String
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+}
