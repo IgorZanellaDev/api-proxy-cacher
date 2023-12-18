@@ -132,3 +132,5 @@ dist
 .idea/
 
 index.js
+
+prisma/cache.db
