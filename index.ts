@@ -18,7 +18,9 @@ const main = async (request: FastifyRequest, reply: FastifyReply) => {
     rejectUnauthorized: false,
   });
 
-  const targetUrl = `${process.env.TARGET_URL}${url}`;
+  const targetUrl = `${
+    process.env.TARGET_URL || "http://localhost:3000"
+  }${url}`;
   const requestHeaders = {
     ...headers,
     host: process.env.TARGET_URL?.replace(/(^\w+:|^)\/\//, ""),
